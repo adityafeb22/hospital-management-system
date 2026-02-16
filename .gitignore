@@ -1,0 +1,5 @@
+node_modules/
+hospital.db
+.env
+*.log
+.DS_Store
