@@ -171,15 +171,23 @@ app.get('/api/auth/verify', async (req, res) => {
     if (profile?.role === 'patient') {
         const { data: patient } = await supabase
             .from('patients')
-            .select('id')
+            .select('id, status')
             .eq('user_id', user.id)
             .single();
+
+        if (patient?.status === 'pending') {
+            return res.status(403).json({ error: 'Your account is pending doctor approval.' });
+        }
         patientId = patient?.id || null;
+    }
+
+    if (!profile) {
+        return res.status(403).json({ error: 'User profile not found. Please contact your doctor.' });
     }
 
     res.json({
         valid: true,
-        user: { id: user.id, email: user.email, name: profile?.name, role: profile?.role, patientId }
+        user: { id: user.id, email: user.email, name: profile.name, role: profile.role, patientId }
     });
 });
 

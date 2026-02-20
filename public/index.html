@@ -7,6 +7,7 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <style>
         * {
             margin: 0;
@@ -572,6 +573,13 @@
 <body>
     <div id="root"></div>
 
+    <script>
+        // Supabase client (anon key — browser-safe, public)
+        const SUPABASE_URL = 'https://yhsbcylophlqgbudnxfc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inloc2JjeWxvcGhscWdidWRueGZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MDA2MDMsImV4cCI6MjA4NzE3NjYwM30.2cK-1DzbjWbUxcStPrhFr-EH-8xjQyJThg-MFkzM4hM';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    </script>
+
     <script type="text/babel">
         const { useState, useEffect } = React;
         const API_URL = window.location.origin + '/api';
@@ -796,6 +804,59 @@
                 }
             };
 
+            const handleGoogleLogin = async () => {
+                try {
+                    setLoading(true);
+                    setError('');
+                    const redirectTo = window.location.origin + window.location.pathname;
+                    const { error } = await supabaseClient.auth.signInWithOAuth({
+                        provider: 'google',
+                        options: { redirectTo }
+                    });
+                    if (error) throw error;
+                    // Browser will redirect to Google — no further action needed here
+                } catch (err) {
+                    setError(err.message || 'Google sign-in failed');
+                    setLoading(false);
+                }
+            };
+
+            // Handle OAuth callback — Supabase puts session in URL hash after Google redirect
+            useEffect(() => {
+                const handleOAuthCallback = async () => {
+                    const hash = window.location.hash;
+                    if (!hash || !hash.includes('access_token')) return;
+
+                    // Let Supabase parse the hash and restore the session
+                    const { data: { session }, error } = await supabaseClient.auth.getSession();
+                    if (error || !session) return;
+
+                    // Clear hash from URL without reload
+                    history.replaceState(null, '', window.location.pathname);
+
+                    // Exchange Supabase session for our app's user object via verify endpoint
+                    try {
+                        const res = await fetch(`${API_URL}/auth/verify`, {
+                            headers: { 'Authorization': `Bearer ${session.access_token}` }
+                        });
+                        if (!res.ok) {
+                            const body = await res.json();
+                            setError(body.error || 'Login failed — your account may not be set up yet.');
+                            return;
+                        }
+                        const data = await res.json();
+                        setToken(session.access_token);
+                        setUser(data.user);
+                        localStorage.setItem('token', session.access_token);
+                        localStorage.setItem('user', JSON.stringify(data.user));
+                    } catch (err) {
+                        setError('Failed to complete Google sign-in. Please try again.');
+                    }
+                };
+
+                handleOAuthCallback();
+            }, []);
+
             const handleLogout = () => {
                 setToken(null);
                 setUser(null);
@@ -946,6 +1007,24 @@
                                     <button type="submit" className="btn" disabled={loading}>
                                         {loading ? 'Logging in...' : 'Login'}
                                     </button>
+                                    <div style={{display:'flex',alignItems:'center',margin:'18px 0',gap:'12px'}}>
+                                        <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
+                                        <span style={{color:'#999',fontSize:'13px'}}>or</span>
+                                        <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
+                                    </div>
+                                    <button type="button" onClick={handleGoogleLogin} disabled={loading}
+                                        style={{width:'100%',padding:'12px',border:'2px solid #e0e0e0',borderRadius:'8px',
+                                            background:'#fff',cursor:'pointer',fontSize:'14px',fontWeight:600,
+                                            display:'flex',alignItems:'center',justifyContent:'center',gap:'10px',
+                                            transition:'border-color 0.2s',color:'#333'}}>
+                                        <svg width="18" height="18" viewBox="0 0 48 48">
+                                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                                        </svg>
+                                        {loading ? 'Redirecting...' : 'Continue with Google'}
+                                    </button>
                                 </form>
                             ) : (
                                 <form onSubmit={handleSignup}>
@@ -967,6 +1046,23 @@
                                     </div>
                                     <button type="submit" className="btn" disabled={loading}>
                                         {loading ? 'Signing up...' : 'Request Account'}
+                                    </button>
+                                    <div style={{display:'flex',alignItems:'center',margin:'18px 0',gap:'12px'}}>
+                                        <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
+                                        <span style={{color:'#999',fontSize:'13px'}}>or sign up with</span>
+                                        <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
+                                    </div>
+                                    <button type="button" onClick={handleGoogleLogin} disabled={loading}
+                                        style={{width:'100%',padding:'12px',border:'2px solid #e0e0e0',borderRadius:'8px',
+                                            background:'#fff',cursor:'pointer',fontSize:'14px',fontWeight:600,
+                                            display:'flex',alignItems:'center',justifyContent:'center',gap:'10px',color:'#333'}}>
+                                        <svg width="18" height="18" viewBox="0 0 48 48">
+                                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                                        </svg>
+                                        {loading ? 'Redirecting...' : 'Sign up with Google'}
                                     </button>
                                     <p style={{textAlign:'center',marginTop:'12px',fontSize:'13px',color:'#666'}}>
                                         Your account will be reviewed by a doctor before you can log in.
