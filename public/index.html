@@ -582,28 +582,47 @@
 
     <script type="text/babel">
         const { useState, useEffect } = React;
-        const API_URL = window.location.origin + '/api';
+        const API_URL = 'https://hospital-management-system-production-4799.up.railway.app/api';
+
+        // Safe JSON parser — returns null if body is not JSON (e.g. Railway HTML error pages)
+        async function safeJson(res) {
+            const ct = res.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) return null;
+            try { return await res.json(); } catch { return null; }
+        }
 
         // API Helper Functions
         const api = {
             async login(email, password) {
-                const res = await fetch(`${API_URL}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
-                });
-                if (!res.ok) throw new Error((await res.json()).error);
-                return res.json();
+                let res;
+                try {
+                    res = await fetch(`${API_URL}/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                } catch (networkErr) {
+                    throw new Error('Cannot reach the server. Please check your connection.');
+                }
+                const body = await safeJson(res);
+                if (!res.ok) throw new Error(body?.error || `Login failed (${res.status})`);
+                return body;
             },
 
             async signup(name, email, password, phone) {
-                const res = await fetch(`${API_URL}/auth/signup`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password, phone })
-                });
-                if (!res.ok) throw new Error((await res.json()).error);
-                return res.json();
+                let res;
+                try {
+                    res = await fetch(`${API_URL}/auth/signup`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, email, password, phone })
+                    });
+                } catch (networkErr) {
+                    throw new Error('Cannot reach the server. Please check your connection.');
+                }
+                const body = await safeJson(res);
+                if (!res.ok) throw new Error(body?.error || `Sign-up failed (${res.status}). Please try again.`);
+                return body;
             },
 
             async getPendingPatients(token) {
@@ -634,14 +653,15 @@
             async addPatient(token, data) {
                 const res = await fetch(`${API_URL}/patients`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(data)
                 });
-                if (!res.ok) throw new Error((await res.json()).error);
-                return res.json();
+                const body = await safeJson(res);
+                if (!res.ok) throw new Error(body?.error || 'Failed to add patient');
+                return body;
             },
 
             async updatePatient(token, id, data) {
@@ -727,21 +747,19 @@
             const [formData, setFormData] = useState({});
             const [billingFilter, setBillingFilter] = useState('all');
 
-            useEffect(() => {
-                if (token && user) {
-                    loadData();
-                }
-            }, [token]);
-
-            const loadData = async () => {
+            // loadData accepts explicit token+user to avoid stale closure bugs
+            const loadData = async (tkn, usr) => {
+                const t = tkn || token;
+                const u = usr || user;
+                if (!t || !u) return;
                 try {
                     setLoading(true);
-                    if (user.role === 'doctor') {
+                    if (u.role === 'doctor') {
                         const [patientsData, appointmentsData, feesData, pendingData] = await Promise.all([
-                            api.getPatients(token),
-                            api.getAppointments(token),
-                            api.getFees(token),
-                            api.getPendingPatients(token)
+                            api.getPatients(t),
+                            api.getAppointments(t),
+                            api.getFees(t),
+                            api.getPendingPatients(t)
                         ]);
                         setPatients(patientsData);
                         setAppointments(appointmentsData);
@@ -749,14 +767,14 @@
                         setPendingPatients(pendingData);
                     } else {
                         const [appointmentsData, feesData] = await Promise.all([
-                            api.getAppointments(token),
-                            api.getFees(token)
+                            api.getAppointments(t),
+                            api.getFees(t)
                         ]);
                         setAppointments(appointmentsData);
                         setFees(feesData);
-                        
-                        const patientData = await fetch(`${API_URL}/patients/${user.patientId}`, {
-                            headers: { 'Authorization': `Bearer ${token}` }
+
+                        const patientData = await fetch(`${API_URL}/patients/${u.patientId}`, {
+                            headers: { 'Authorization': `Bearer ${t}` }
                         }).then(res => res.json());
                         setPatients([patientData]);
                     }
@@ -766,6 +784,13 @@
                     setLoading(false);
                 }
             };
+
+            // Fire loadData whenever token or user identity changes (covers fresh login + page reload)
+            useEffect(() => {
+                if (token && user) {
+                    loadData(token, user);
+                }
+            }, [token, user && user.id]);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
@@ -778,6 +803,8 @@
                     setUser(data.user);
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('user', JSON.stringify(data.user));
+                    // Eagerly load data — don't wait for useEffect to pick up state change
+                    await loadData(data.token, data.user);
                 } catch (err) {
                     setError(err.message);
                 } finally {
@@ -857,6 +884,8 @@
                         setUser(data.user);
                         localStorage.setItem('token', session.access_token);
                         localStorage.setItem('user', JSON.stringify(data.user));
+                        // Eagerly load data with fresh token+user (no stale closure)
+                        await loadData(session.access_token, data.user);
                     } catch (err) {
                         setError('Failed to complete sign-in. Please try again.');
                     }

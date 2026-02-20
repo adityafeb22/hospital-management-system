@@ -88,9 +88,12 @@ router.post('/', authenticateToken, async (req, res) => {
         }
 
         // Invite patient via Supabase Auth (sends invite email with set-password link)
+        // Use the Railway backend URL — it serves set-password.html and is always reachable.
+        // GitHub Pages URL is the preferred UX but requires Supabase dashboard whitelist.
+        const RAILWAY_URL = 'https://hospital-management-system-production-4799.up.railway.app';
         const REDIRECT_URL = process.env.APP_URL
             ? `${process.env.APP_URL}/set-password.html`
-            : 'https://adityafeb22.github.io/hospital-management-system/set-password.html';
+            : `${RAILWAY_URL}/set-password.html`;
 
         const { data: inviteData, error: inviteError } = await supabase.auth.admin.inviteUserByEmail(email, {
             data: { name, role: 'patient' },
