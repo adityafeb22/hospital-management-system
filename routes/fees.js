@@ -39,8 +39,17 @@ router.post('/', authenticateToken, async (req, res) => {
 
         const { patient_id, amount, service, payment_status, payment_method } = req.body;
 
-        if (!patient_id || !amount) {
+        if (!patient_id || amount === undefined || amount === null) {
             return res.status(400).json({ error: 'Patient ID and amount are required' });
+        }
+        if (typeof amount !== 'number' && isNaN(parseFloat(amount))) {
+            return res.status(400).json({ error: 'Amount must be a valid number' });
+        }
+        if (parseFloat(amount) <= 0) {
+            return res.status(400).json({ error: 'Amount must be greater than zero' });
+        }
+        if (!service || !service.trim()) {
+            return res.status(400).json({ error: 'Service description is required' });
         }
 
         const result = await db.run(
@@ -64,6 +73,10 @@ router.put('/:id', authenticateToken, async (req, res) => {
         }
 
         const { amount, service, payment_status, payment_method } = req.body;
+
+        if (amount !== undefined && (isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)) {
+            return res.status(400).json({ error: 'Amount must be a valid number greater than zero' });
+        }
 
         await db.run(
             'UPDATE fees SET amount = ?, service = ?, payment_status = ?, payment_method = ? WHERE id = ?',

@@ -70,6 +70,15 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Patient ID is required' });
         }
 
+        // Check for conflicting appointment at same date+time
+        const conflict = await db.get(
+            "SELECT id FROM appointments WHERE date = ? AND time = ? AND status = 'scheduled'",
+            [date, time]
+        );
+        if (conflict) {
+            return res.status(409).json({ error: 'This time slot is already booked. Please choose a different time.' });
+        }
+
         const result = await db.run(
             'INSERT INTO appointments (patient_id, date, time, reason) VALUES (?, ?, ?, ?)',
             [patientId, date, time, reason]

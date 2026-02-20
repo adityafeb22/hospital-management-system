@@ -4,6 +4,15 @@ const bodyParser = require('body-parser');
 const path = require('path');
 require('dotenv').config();
 
+// ── Environment validation (fail fast on missing/weak config) ──
+if (!process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET is not set. Add it to your .env file.');
+    process.exit(1);
+}
+if (process.env.JWT_SECRET.length < 32) {
+    console.warn('WARNING: JWT_SECRET is shorter than 32 characters. Use a longer, random secret in production.');
+}
+
 const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
 const appointmentRoutes = require('./routes/appointments');

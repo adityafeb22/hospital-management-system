@@ -11,6 +11,8 @@ class Database {
                 console.error('Error opening database:', err);
             } else {
                 console.log('✓ Connected to SQLite database at:', dbPath);
+                // Enable foreign key enforcement (disabled by default in SQLite)
+                this.db.run('PRAGMA foreign_keys = ON');
             }
         });
     }
