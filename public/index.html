@@ -315,12 +315,12 @@
             margin-top: 20px;
             border: 2px solid #667eea;
         }
-        
+
         .upi-section h4 {
             color: #667eea;
             margin-bottom: 15px;
         }
-        
+
         .upi-id {
             font-family: monospace;
             font-size: 16px;
@@ -330,6 +330,182 @@
             padding: 12px;
             border-radius: 8px;
             margin: 10px 0;
+        }
+
+        .billing-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .billing-summary-card {
+            padding: 16px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .billing-summary-card.total {
+            background: #f0f4ff;
+            border: 1px solid #c7d2fe;
+        }
+
+        .billing-summary-card.paid {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+        }
+
+        .billing-summary-card.pending {
+            background: #fff7ed;
+            border: 2px solid #fdba74;
+        }
+
+        .billing-summary-card .summary-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .billing-summary-card.total .summary-label { color: #4f46e5; }
+        .billing-summary-card.paid .summary-label  { color: #16a34a; }
+        .billing-summary-card.pending .summary-label { color: #ea580c; }
+
+        .billing-summary-card .summary-amount {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .billing-summary-card.total .summary-amount  { color: #4f46e5; }
+        .billing-summary-card.paid .summary-amount   { color: #16a34a; }
+        .billing-summary-card.pending .summary-amount { color: #ea580c; }
+
+        .fee-row {
+            background: white;
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 10px;
+            border: 1.5px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .fee-row.pending-row {
+            border-color: #fdba74;
+            background: #fffbf5;
+        }
+
+        .fee-row.paid-row {
+            border-color: #86efac;
+            background: #f8fff9;
+        }
+
+        .fee-row-left {
+            flex: 1;
+        }
+
+        .fee-service {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+
+        .fee-date {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 4px;
+        }
+
+        .fee-method {
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .fee-row-right {
+            text-align: right;
+        }
+
+        .fee-amount {
+            font-size: 20px;
+            font-weight: 700;
+            color: #374151;
+        }
+
+        .fee-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        .fee-badge.paid   { background: #dcfce7; color: #15803d; }
+        .fee-badge.pending { background: #ffedd5; color: #c2410c; }
+
+        .billing-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+
+        .billing-section-header h3 {
+            color: #1f2937;
+        }
+
+        .billing-filter {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-btn {
+            padding: 5px 12px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 20px;
+            background: white;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            color: #6b7280;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: transparent;
+            color: white;
+        }
+
+        .empty-billing {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+        }
+
+        .empty-billing p {
+            font-size: 15px;
+            margin-top: 8px;
+        }
+
+        .pending-alert {
+            background: #fff7ed;
+            border: 1.5px solid #fdba74;
+            border-radius: 10px;
+            padding: 14px 18px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #92400e;
+            font-size: 14px;
+            font-weight: 500;
         }
         
         .queue-item {
@@ -512,6 +688,7 @@
             const [modalType, setModalType] = useState('');
             const [selectedPatient, setSelectedPatient] = useState(null);
             const [formData, setFormData] = useState({});
+            const [billingFilter, setBillingFilter] = useState('all');
 
             useEffect(() => {
                 if (token && user) {
@@ -809,28 +986,101 @@
                             </div>
 
                             <div className="card">
-                                <h3>Payment History</h3>
-                                {fees.length === 0 ? (
-                                    <p style={{color: '#666'}}>No payment records</p>
-                                ) : (
-                                    <>
-                                        {fees.map(fee => (
-                                            <div key={fee.id} style={{padding: '15px', background: 'white', borderRadius: '8px', marginBottom: '10px', border: '1px solid #e0e0e0'}}>
-                                                <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                                                    <div>
-                                                        <p><strong>Service:</strong> {fee.service || 'Consultation'}</p>
-                                                        <p><strong>Status:</strong> <span style={{color: fee.payment_status === 'paid' ? '#2f7d32' : '#d32f2f'}}>{fee.payment_status}</span></p>
-                                                    </div>
-                                                    <h3 style={{color: '#667eea'}}>₹{parseFloat(fee.amount).toLocaleString('en-IN')}</h3>
+                                {(() => {
+                                    const totalDue = fees.filter(f => f.payment_status === 'pending').reduce((s, f) => s + parseFloat(f.amount || 0), 0);
+                                    const totalPaid = fees.filter(f => f.payment_status === 'paid').reduce((s, f) => s + parseFloat(f.amount || 0), 0);
+                                    const totalBilled = fees.reduce((s, f) => s + parseFloat(f.amount || 0), 0);
+
+                                    const formatDate = (dateStr) => {
+                                        if (!dateStr) return '—';
+                                        const d = new Date(dateStr);
+                                        return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                                    };
+
+                                    const filtered = fees.filter(f =>
+                                        billingFilter === 'all' ? true : f.payment_status === billingFilter
+                                    );
+
+                                    return (
+                                        <>
+                                            <div className="billing-section-header">
+                                                <h3>Billing History</h3>
+                                                <div className="billing-filter">
+                                                    {['all', 'pending', 'paid'].map(f => (
+                                                        <button
+                                                            key={f}
+                                                            className={`filter-btn ${billingFilter === f ? 'active' : ''}`}
+                                                            onClick={() => setBillingFilter(f)}
+                                                        >
+                                                            {f.charAt(0).toUpperCase() + f.slice(1)}
+                                                        </button>
+                                                    ))}
                                                 </div>
                                             </div>
-                                        ))}
-                                        <div className="upi-section">
-                                            <h4>Pay via UPI</h4>
-                                            <div className="upi-id">drjahnavi@paytm</div>
-                                        </div>
-                                    </>
-                                )}
+
+                                            {fees.length === 0 ? (
+                                                <div className="empty-billing">
+                                                    <p>No billing records found.</p>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="billing-summary">
+                                                        <div className="billing-summary-card total">
+                                                            <div className="summary-label">Total Billed</div>
+                                                            <div className="summary-amount">₹{totalBilled.toLocaleString('en-IN')}</div>
+                                                        </div>
+                                                        <div className="billing-summary-card paid">
+                                                            <div className="summary-label">Paid</div>
+                                                            <div className="summary-amount">₹{totalPaid.toLocaleString('en-IN')}</div>
+                                                        </div>
+                                                        <div className="billing-summary-card pending">
+                                                            <div className="summary-label">Due</div>
+                                                            <div className="summary-amount">₹{totalDue.toLocaleString('en-IN')}</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {totalDue > 0 && (
+                                                        <div className="pending-alert">
+                                                            ⚠ You have ₹{totalDue.toLocaleString('en-IN')} in pending payments. Please pay using UPI below.
+                                                        </div>
+                                                    )}
+
+                                                    {filtered.length === 0 ? (
+                                                        <div className="empty-billing">
+                                                            <p>No {billingFilter} records.</p>
+                                                        </div>
+                                                    ) : (
+                                                        filtered.map(fee => (
+                                                            <div key={fee.id} className={`fee-row ${fee.payment_status === 'pending' ? 'pending-row' : 'paid-row'}`}>
+                                                                <div className="fee-row-left">
+                                                                    <div className="fee-service">{fee.service || 'Consultation'}</div>
+                                                                    <div className="fee-date">{formatDate(fee.date)}</div>
+                                                                    {fee.payment_method && (
+                                                                        <div className="fee-method">Paid via {fee.payment_method}</div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="fee-row-right">
+                                                                    <div className="fee-amount">₹{parseFloat(fee.amount).toLocaleString('en-IN')}</div>
+                                                                    <div className={`fee-badge ${fee.payment_status}`}>{fee.payment_status}</div>
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+
+                                                    {totalDue > 0 && (
+                                                        <div className="upi-section">
+                                                            <h4>Pay ₹{totalDue.toLocaleString('en-IN')} via UPI</h4>
+                                                            <div className="upi-id">drjahnavi@paytm</div>
+                                                            <p style={{fontSize: '12px', color: '#667eea', marginTop: '8px'}}>
+                                                                Open any UPI app (PhonePe, GPay, Paytm) and send payment to the above UPI ID. Your doctor will update the status once confirmed.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </>
+                                    );
+                                })()}
                             </div>
                         </div>
 
