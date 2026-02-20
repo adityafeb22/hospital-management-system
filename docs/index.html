@@ -578,13 +578,40 @@
 
         // API Helper Functions
         const api = {
-            async login(email, password, role) {
+            async login(email, password) {
                 const res = await fetch(`${API_URL}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, role })
+                    body: JSON.stringify({ email, password })
                 });
                 if (!res.ok) throw new Error((await res.json()).error);
+                return res.json();
+            },
+
+            async signup(name, email, password, phone) {
+                const res = await fetch(`${API_URL}/auth/signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password, phone })
+                });
+                if (!res.ok) throw new Error((await res.json()).error);
+                return res.json();
+            },
+
+            async getPendingPatients(token) {
+                const res = await fetch(`${API_URL}/patients/pending`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to fetch pending patients');
+                return res.json();
+            },
+
+            async approvePatient(token, id) {
+                const res = await fetch(`${API_URL}/patients/${id}/approve`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to approve patient');
                 return res.json();
             },
 
@@ -678,7 +705,9 @@
             const [token, setToken] = useState(localStorage.getItem('token'));
             const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || 'null'));
             const [activeTab, setActiveTab] = useState('dashboard');
+            const [authTab, setAuthTab] = useState('login'); // 'login' | 'signup'
             const [patients, setPatients] = useState([]);
+            const [pendingPatients, setPendingPatients] = useState([]);
             const [appointments, setAppointments] = useState([]);
             const [fees, setFees] = useState([]);
             const [loading, setLoading] = useState(false);
@@ -700,14 +729,16 @@
                 try {
                     setLoading(true);
                     if (user.role === 'doctor') {
-                        const [patientsData, appointmentsData, feesData] = await Promise.all([
+                        const [patientsData, appointmentsData, feesData, pendingData] = await Promise.all([
                             api.getPatients(token),
                             api.getAppointments(token),
-                            api.getFees(token)
+                            api.getFees(token),
+                            api.getPendingPatients(token)
                         ]);
                         setPatients(patientsData);
                         setAppointments(appointmentsData);
                         setFees(feesData);
+                        setPendingPatients(pendingData);
                     } else {
                         const [appointmentsData, feesData] = await Promise.all([
                             api.getAppointments(token),
@@ -733,16 +764,31 @@
                 try {
                     setLoading(true);
                     setError('');
-                    const formData = new FormData(e.target);
-                    const data = await api.login(
-                        formData.get('email'),
-                        formData.get('password'),
-                        formData.get('role')
-                    );
+                    const fd = new FormData(e.target);
+                    const data = await api.login(fd.get('email'), fd.get('password'));
                     setToken(data.token);
                     setUser(data.user);
                     localStorage.setItem('token', data.token);
                     localStorage.setItem('user', JSON.stringify(data.user));
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleSignup = async (e) => {
+                e.preventDefault();
+                try {
+                    setLoading(true);
+                    setError('');
+                    setSuccess('');
+                    const fd = new FormData(e.target);
+                    const result = await api.signup(
+                        fd.get('name'), fd.get('email'), fd.get('password'), fd.get('phone')
+                    );
+                    setSuccess(result.message);
+                    e.target.reset();
                 } catch (err) {
                     setError(err.message);
                 } finally {
@@ -789,10 +835,23 @@
                         setSuccess('Patient updated successfully');
                     } else {
                         const result = await api.addPatient(token, formData);
-                        setSuccess(`Patient added! Login: ${result.credentials.email} / ${result.credentials.password}`);
+                        setSuccess(result.message || 'Patient added! Invite email sent.');
                     }
                     await loadData();
-                    setTimeout(closeModal, 2000);
+                    setTimeout(closeModal, 2500);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const approvePatient = async (id) => {
+                try {
+                    setLoading(true);
+                    await api.approvePatient(token, id);
+                    await loadData();
+                    setSuccess('Patient approved successfully');
                 } catch (err) {
                     setError(err.message);
                 } finally {
@@ -862,27 +921,58 @@
                             <div className="login-header">
                                 <h1>🏥 Hospital Management System</h1>
                             </div>
+                            <div style={{display:'flex',gap:'0',marginBottom:'24px',borderRadius:'8px',overflow:'hidden',border:'2px solid #667eea'}}>
+                                <button type="button" onClick={() => { setAuthTab('login'); setError(''); setSuccess(''); }}
+                                    style={{flex:1,padding:'10px',border:'none',cursor:'pointer',fontWeight:600,fontSize:'14px',
+                                        background: authTab==='login' ? 'linear-gradient(135deg,#667eea,#764ba2)' : '#fff',
+                                        color: authTab==='login' ? '#fff' : '#667eea'}}>Login</button>
+                                <button type="button" onClick={() => { setAuthTab('signup'); setError(''); setSuccess(''); }}
+                                    style={{flex:1,padding:'10px',border:'none',cursor:'pointer',fontWeight:600,fontSize:'14px',
+                                        background: authTab==='signup' ? 'linear-gradient(135deg,#667eea,#764ba2)' : '#fff',
+                                        color: authTab==='signup' ? '#fff' : '#667eea'}}>Patient Sign Up</button>
+                            </div>
                             {error && <div className="error-message">{error}</div>}
-                            <form onSubmit={handleLogin}>
-                                <div className="form-group">
-                                    <label>Login As</label>
-                                    <select name="role" required>
-                                        <option value="doctor">Doctor</option>
-                                        <option value="patient">Patient</option>
-                                    </select>
-                                </div>
-                                <div className="form-group">
-                                    <label>Email / Phone</label>
-                                    <input type="text" name="email" required />
-                                </div>
-                                <div className="form-group">
-                                    <label>Password</label>
-                                    <input type="password" name="password" required />
-                                </div>
-                                <button type="submit" className="btn" disabled={loading}>
-                                    {loading ? 'Logging in...' : 'Login'}
-                                </button>
-                            </form>
+                            {success && <div className="success-message">{success}</div>}
+                            {authTab === 'login' ? (
+                                <form onSubmit={handleLogin}>
+                                    <div className="form-group">
+                                        <label>Email</label>
+                                        <input type="email" name="email" required autoComplete="email" />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Password</label>
+                                        <input type="password" name="password" required autoComplete="current-password" />
+                                    </div>
+                                    <button type="submit" className="btn" disabled={loading}>
+                                        {loading ? 'Logging in...' : 'Login'}
+                                    </button>
+                                </form>
+                            ) : (
+                                <form onSubmit={handleSignup}>
+                                    <div className="form-group">
+                                        <label>Full Name*</label>
+                                        <input type="text" name="name" required />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Email*</label>
+                                        <input type="email" name="email" required autoComplete="email" />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Password*</label>
+                                        <input type="password" name="password" required minLength="6" autoComplete="new-password" />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>Phone</label>
+                                        <input type="tel" name="phone" />
+                                    </div>
+                                    <button type="submit" className="btn" disabled={loading}>
+                                        {loading ? 'Signing up...' : 'Request Account'}
+                                    </button>
+                                    <p style={{textAlign:'center',marginTop:'12px',fontSize:'13px',color:'#666'}}>
+                                        Your account will be reviewed by a doctor before you can log in.
+                                    </p>
+                                </form>
+                            )}
                         </div>
                     </div>
                 );
@@ -1144,7 +1234,7 @@
 
                         <div className="nav-tabs">
                             {['dashboard', 'patients', 'appointments', 'fees'].map(tab => (
-                                <button 
+                                <button
                                     key={tab}
                                     className={`nav-tab ${activeTab === tab ? 'active' : ''}`}
                                     onClick={() => setActiveTab(tab)}
@@ -1152,6 +1242,21 @@
                                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                                 </button>
                             ))}
+                            <button
+                                className={`nav-tab ${activeTab === 'pending' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('pending')}
+                                style={{position:'relative'}}
+                            >
+                                Pending
+                                {pendingPatients.length > 0 && (
+                                    <span style={{
+                                        position:'absolute',top:'-6px',right:'-6px',
+                                        background:'#ef4444',color:'#fff',borderRadius:'50%',
+                                        width:'18px',height:'18px',fontSize:'11px',
+                                        display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700
+                                    }}>{pendingPatients.length}</span>
+                                )}
+                            </button>
                         </div>
 
                         {activeTab === 'dashboard' && (
@@ -1233,6 +1338,39 @@
                             </>
                         )}
 
+                        {activeTab === 'pending' && (
+                            <>
+                                <div className="card" style={{marginBottom:'16px',background:'#fff7ed',border:'1px solid #fdba74'}}>
+                                    <p style={{color:'#92400e',fontSize:'14px'}}>
+                                        ⏳ Patients who signed up themselves await your approval before they can log in.
+                                    </p>
+                                </div>
+                                {pendingPatients.length === 0 ? (
+                                    <div className="card" style={{textAlign:'center',color:'#666',padding:'40px'}}>
+                                        ✅ No pending approvals
+                                    </div>
+                                ) : (
+                                    <div className="patient-list" style={{marginTop:'12px'}}>
+                                        {pendingPatients.map(patient => (
+                                            <div key={patient.id} className="patient-item" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                                <div>
+                                                    <h4>{patient.name}</h4>
+                                                    <p>{patient.email} {patient.phone ? `| ${patient.phone}` : ''}</p>
+                                                    <p style={{fontSize:'12px',color:'#999'}}>Signed up: {new Date(patient.created_at).toLocaleDateString('en-IN')}</p>
+                                                </div>
+                                                <button
+                                                    className="btn btn-small"
+                                                    style={{minWidth:'90px'}}
+                                                    onClick={() => approvePatient(patient.id)}
+                                                    disabled={loading}
+                                                >Approve</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </>
+                        )}
+
                         {activeTab === 'fees' && (
                             <>
                                 <button className="btn btn-small" onClick={() => openModal('addFee')}>Add Fee</button>
@@ -1302,8 +1440,8 @@
                                             <input type="tel" value={formData.phone || ''} onChange={(e) => handleFormChange('phone', e.target.value)} required />
                                         </div>
                                         <div className="form-group">
-                                            <label>Email</label>
-                                            <input type="email" value={formData.email || ''} onChange={(e) => handleFormChange('email', e.target.value)} />
+                                            <label>Email* {!selectedPatient && <span style={{fontWeight:400,color:'#667eea',fontSize:'12px'}}>(invite link will be sent)</span>}</label>
+                                            <input type="email" value={formData.email || ''} onChange={(e) => handleFormChange('email', e.target.value)} required={!selectedPatient} />
                                         </div>
                                         <div className="form-group">
                                             <label>Address</label>
