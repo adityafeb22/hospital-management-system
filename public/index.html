@@ -804,37 +804,45 @@
                 }
             };
 
-            const handleGoogleLogin = async () => {
+            const [magicLinkSent, setMagicLinkSent] = useState(false);
+
+            const handleMagicLink = async (e) => {
+                e.preventDefault();
                 try {
                     setLoading(true);
                     setError('');
+                    const fd = new FormData(e.target);
+                    const email = fd.get('magic_email');
                     const redirectTo = window.location.origin + window.location.pathname;
-                    const { error } = await supabaseClient.auth.signInWithOAuth({
-                        provider: 'google',
-                        options: { redirectTo }
+                    const { error } = await supabaseClient.auth.signInWithOtp({
+                        email,
+                        options: { emailRedirectTo: redirectTo, shouldCreateUser: false }
                     });
                     if (error) throw error;
-                    // Browser will redirect to Google — no further action needed here
+                    setMagicLinkSent(true);
+                    setSuccess(`Magic link sent to ${email} — check your inbox and click the link to log in.`);
                 } catch (err) {
-                    setError(err.message || 'Google sign-in failed');
+                    // shouldCreateUser:false means unregistered emails get a generic error
+                    setError(err.message?.includes('not found') || err.message?.includes('not exist')
+                        ? 'No account found for that email. Please sign up first or ask your doctor to add you.'
+                        : (err.message || 'Failed to send magic link'));
+                } finally {
                     setLoading(false);
                 }
             };
 
-            // Handle OAuth callback — Supabase puts session in URL hash after Google redirect
+            // Handle magic link callback — Supabase puts session in URL hash after email click
             useEffect(() => {
-                const handleOAuthCallback = async () => {
+                const handleMagicLinkCallback = async () => {
                     const hash = window.location.hash;
                     if (!hash || !hash.includes('access_token')) return;
 
-                    // Let Supabase parse the hash and restore the session
                     const { data: { session }, error } = await supabaseClient.auth.getSession();
                     if (error || !session) return;
 
                     // Clear hash from URL without reload
                     history.replaceState(null, '', window.location.pathname);
 
-                    // Exchange Supabase session for our app's user object via verify endpoint
                     try {
                         const res = await fetch(`${API_URL}/auth/verify`, {
                             headers: { 'Authorization': `Bearer ${session.access_token}` }
@@ -850,11 +858,11 @@
                         localStorage.setItem('token', session.access_token);
                         localStorage.setItem('user', JSON.stringify(data.user));
                     } catch (err) {
-                        setError('Failed to complete Google sign-in. Please try again.');
+                        setError('Failed to complete sign-in. Please try again.');
                     }
                 };
 
-                handleOAuthCallback();
+                handleMagicLinkCallback();
             }, []);
 
             const handleLogout = () => {
@@ -1007,24 +1015,27 @@
                                     <button type="submit" className="btn" disabled={loading}>
                                         {loading ? 'Logging in...' : 'Login'}
                                     </button>
-                                    <div style={{display:'flex',alignItems:'center',margin:'18px 0',gap:'12px'}}>
+                                    <div style={{display:'flex',alignItems:'center',margin:'20px 0',gap:'12px'}}>
                                         <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
-                                        <span style={{color:'#999',fontSize:'13px'}}>or</span>
+                                        <span style={{color:'#999',fontSize:'13px'}}>or sign in without a password</span>
                                         <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
                                     </div>
-                                    <button type="button" onClick={handleGoogleLogin} disabled={loading}
-                                        style={{width:'100%',padding:'12px',border:'2px solid #e0e0e0',borderRadius:'8px',
-                                            background:'#fff',cursor:'pointer',fontSize:'14px',fontWeight:600,
-                                            display:'flex',alignItems:'center',justifyContent:'center',gap:'10px',
-                                            transition:'border-color 0.2s',color:'#333'}}>
-                                        <svg width="18" height="18" viewBox="0 0 48 48">
-                                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                                        </svg>
-                                        {loading ? 'Redirecting...' : 'Continue with Google'}
-                                    </button>
+                                    {magicLinkSent ? (
+                                        <div className="success-message" style={{textAlign:'center'}}>
+                                            📧 Check your email for the login link!
+                                        </div>
+                                    ) : (
+                                        <form onSubmit={handleMagicLink} style={{display:'flex',gap:'8px'}}>
+                                            <input type="email" name="magic_email" required placeholder="your@email.com"
+                                                style={{flex:1,padding:'12px',border:'2px solid #e0e0e0',borderRadius:'8px',fontSize:'14px'}} />
+                                            <button type="submit" disabled={loading}
+                                                style={{padding:'12px 16px',background:'linear-gradient(135deg,#667eea,#764ba2)',
+                                                    color:'#fff',border:'none',borderRadius:'8px',cursor:'pointer',
+                                                    fontWeight:600,fontSize:'13px',whiteSpace:'nowrap'}}>
+                                                {loading ? '...' : '✉ Send Link'}
+                                            </button>
+                                        </form>
+                                    )}
                                 </form>
                             ) : (
                                 <form onSubmit={handleSignup}>
@@ -1047,25 +1058,8 @@
                                     <button type="submit" className="btn" disabled={loading}>
                                         {loading ? 'Signing up...' : 'Request Account'}
                                     </button>
-                                    <div style={{display:'flex',alignItems:'center',margin:'18px 0',gap:'12px'}}>
-                                        <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
-                                        <span style={{color:'#999',fontSize:'13px'}}>or sign up with</span>
-                                        <div style={{flex:1,height:'1px',background:'#e0e0e0'}}></div>
-                                    </div>
-                                    <button type="button" onClick={handleGoogleLogin} disabled={loading}
-                                        style={{width:'100%',padding:'12px',border:'2px solid #e0e0e0',borderRadius:'8px',
-                                            background:'#fff',cursor:'pointer',fontSize:'14px',fontWeight:600,
-                                            display:'flex',alignItems:'center',justifyContent:'center',gap:'10px',color:'#333'}}>
-                                        <svg width="18" height="18" viewBox="0 0 48 48">
-                                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                                        </svg>
-                                        {loading ? 'Redirecting...' : 'Sign up with Google'}
-                                    </button>
-                                    <p style={{textAlign:'center',marginTop:'12px',fontSize:'13px',color:'#666'}}>
-                                        Your account will be reviewed by a doctor before you can log in.
+                                    <p style={{textAlign:'center',marginTop:'14px',fontSize:'13px',color:'#666',lineHeight:'1.5'}}>
+                                        Once approved by the doctor, you can log in with your password <em>or</em> use the magic link on the Login tab — no password needed.
                                     </p>
                                 </form>
                             )}
