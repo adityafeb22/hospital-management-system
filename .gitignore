@@ -3,3 +3,4 @@ hospital.db
 .env
 *.log
 .DS_Store
+package-lock.json

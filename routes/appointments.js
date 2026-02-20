@@ -1,36 +1,49 @@
 const express = require('express');
-const db = require('../database');
+const supabase = require('../database');
 const { authenticateToken } = require('./auth');
 
 const router = express.Router();
 
-// Get all appointments
+// Get all appointments (role-filtered)
 router.get('/', authenticateToken, async (req, res) => {
     try {
-        let appointments;
-        
-        if (req.user.role === 'doctor') {
-            appointments = await db.all(`
-                SELECT a.*, p.name as patient_name, p.phone as patient_phone 
-                FROM appointments a
-                JOIN patients p ON a.patient_id = p.id
-                ORDER BY a.date DESC, a.time DESC
-            `);
-        } else {
-            appointments = await db.all(
-                'SELECT * FROM appointments WHERE patient_id = ? ORDER BY date DESC, time DESC',
-                [req.user.patientId]
-            );
-        }
+        let query;
 
-        res.json(appointments);
+        if (req.user.role === 'doctor') {
+            const { data, error } = await supabase
+                .from('appointments')
+                .select('*, patients(name, phone)')
+                .order('date', { ascending: false })
+                .order('time', { ascending: false });
+
+            if (error) throw error;
+
+            // Flatten patient join fields to match original API shape
+            const appointments = (data || []).map(a => ({
+                ...a,
+                patient_name: a.patients?.name,
+                patient_phone: a.patients?.phone,
+                patients: undefined
+            }));
+            return res.json(appointments);
+        } else {
+            const { data, error } = await supabase
+                .from('appointments')
+                .select('*')
+                .eq('patient_id', req.user.patientId)
+                .order('date', { ascending: false })
+                .order('time', { ascending: false });
+
+            if (error) throw error;
+            return res.json(data);
+        }
     } catch (error) {
         console.error('Error fetching appointments:', error);
         res.status(500).json({ error: 'Failed to fetch appointments' });
     }
 });
 
-// Get appointments for today
+// Get today's appointments (doctor only)
 router.get('/today', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'doctor') {
@@ -38,14 +51,21 @@ router.get('/today', authenticateToken, async (req, res) => {
         }
 
         const today = new Date().toISOString().split('T')[0];
-        
-        const appointments = await db.all(`
-            SELECT a.*, p.name as patient_name, p.phone as patient_phone 
-            FROM appointments a
-            JOIN patients p ON a.patient_id = p.id
-            WHERE a.date = ?
-            ORDER BY a.time ASC
-        `, [today]);
+
+        const { data, error } = await supabase
+            .from('appointments')
+            .select('*, patients(name, phone)')
+            .eq('date', today)
+            .order('time', { ascending: true });
+
+        if (error) throw error;
+
+        const appointments = (data || []).map(a => ({
+            ...a,
+            patient_name: a.patients?.name,
+            patient_phone: a.patients?.phone,
+            patients: undefined
+        }));
 
         res.json(appointments);
     } catch (error) {
@@ -63,7 +83,6 @@ router.post('/', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Date and time are required' });
         }
 
-        // If patient is booking, ensure they can only book for themselves
         const patientId = req.user.role === 'patient' ? req.user.patientId : patient_id;
 
         if (!patientId) {
@@ -71,20 +90,25 @@ router.post('/', authenticateToken, async (req, res) => {
         }
 
         // Check for conflicting appointment at same date+time
-        const conflict = await db.get(
-            "SELECT id FROM appointments WHERE date = ? AND time = ? AND status = 'scheduled'",
-            [date, time]
-        );
+        const { data: conflict } = await supabase
+            .from('appointments')
+            .select('id')
+            .eq('date', date)
+            .eq('time', time)
+            .eq('status', 'scheduled')
+            .maybeSingle();
+
         if (conflict) {
             return res.status(409).json({ error: 'This time slot is already booked. Please choose a different time.' });
         }
 
-        const result = await db.run(
-            'INSERT INTO appointments (patient_id, date, time, reason) VALUES (?, ?, ?, ?)',
-            [patientId, date, time, reason]
-        );
+        const { data: newAppointment, error } = await supabase
+            .from('appointments')
+            .insert({ patient_id: patientId, date, time, reason })
+            .select()
+            .single();
 
-        const newAppointment = await db.get('SELECT * FROM appointments WHERE id = ?', [result.id]);
+        if (error) throw error;
         res.status(201).json(newAppointment);
     } catch (error) {
         console.error('Error adding appointment:', error);
@@ -105,14 +129,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Invalid status' });
         }
 
-        await db.run(
-            'UPDATE appointments SET status = ? WHERE id = ?',
-            [status, req.params.id]
-        );
+        const { data: updatedAppointment, error } = await supabase
+            .from('appointments')
+            .update({ status })
+            .eq('id', req.params.id)
+            .select()
+            .single();
 
-        const updatedAppointment = await db.get('SELECT * FROM appointments WHERE id = ?', [req.params.id]);
-        
-        if (!updatedAppointment) {
+        if (error || !updatedAppointment) {
             return res.status(404).json({ error: 'Appointment not found' });
         }
 
@@ -123,14 +147,19 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete appointment
+// Delete appointment (doctor only)
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'doctor') {
             return res.status(403).json({ error: 'Access denied - Doctors only' });
         }
 
-        await db.run('DELETE FROM appointments WHERE id = ?', [req.params.id]);
+        const { error } = await supabase
+            .from('appointments')
+            .delete()
+            .eq('id', req.params.id);
+
+        if (error) throw error;
         res.json({ message: 'Appointment deleted successfully' });
     } catch (error) {
         console.error('Error deleting appointment:', error);

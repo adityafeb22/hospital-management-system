@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const db = require('../database');
+const supabase = require('../database');
 
 const router = express.Router();
 
@@ -14,28 +14,30 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ error: 'Email, password, and role are required' });
         }
 
-        const user = await db.get(
-            'SELECT * FROM users WHERE email = ? AND role = ?',
-            [email, role]
-        );
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .eq('role', role)
+            .single();
 
-        if (!user) {
+        if (error || !user) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         const isValidPassword = await bcrypt.compare(password, user.password);
-        
         if (!isValidPassword) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Get patient details if user is a patient
+        // Get patient record id if logging in as patient
         let patientId = null;
         if (role === 'patient') {
-            const patient = await db.get(
-                'SELECT id FROM patients WHERE user_id = ?',
-                [user.id]
-            );
+            const { data: patient } = await supabase
+                .from('patients')
+                .select('id')
+                .eq('user_id', user.id)
+                .single();
             patientId = patient ? patient.id : null;
         }
 
@@ -61,7 +63,7 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// Middleware to verify token
+// Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];

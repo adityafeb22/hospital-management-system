@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const db = require('../database');
+const supabase = require('../database');
 const { authenticateToken } = require('./auth');
 
 const router = express.Router();
@@ -12,7 +12,12 @@ router.get('/', authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Access denied - Doctors only' });
         }
 
-        const patients = await db.all('SELECT * FROM patients ORDER BY created_at DESC');
+        const { data: patients, error } = await supabase
+            .from('patients')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
         res.json(patients);
     } catch (error) {
         console.error('Error fetching patients:', error);
@@ -23,14 +28,18 @@ router.get('/', authenticateToken, async (req, res) => {
 // Get single patient
 router.get('/:id', authenticateToken, async (req, res) => {
     try {
-        const patient = await db.get('SELECT * FROM patients WHERE id = ?', [req.params.id]);
-        
-        if (!patient) {
+        const { data: patient, error } = await supabase
+            .from('patients')
+            .select('*')
+            .eq('id', req.params.id)
+            .single();
+
+        if (error || !patient) {
             return res.status(404).json({ error: 'Patient not found' });
         }
 
-        // Check authorization
-        if (req.user.role === 'patient' && req.user.patientId !== parseInt(req.params.id)) {
+        // Patients can only view their own record
+        if (req.user.role === 'patient' && req.user.patientId !== patient.id) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
@@ -59,19 +68,27 @@ router.post('/', authenticateToken, async (req, res) => {
         const defaultPassword = phone.slice(-4) + '123';
         const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-        const userResult = await db.run(
-            'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-            [name, patientEmail, hashedPassword, 'patient']
-        );
+        const { data: newUser, error: userError } = await supabase
+            .from('users')
+            .insert({ name, email: patientEmail, password: hashedPassword, role: 'patient' })
+            .select()
+            .single();
+
+        if (userError) {
+            if (userError.code === '23505') {
+                return res.status(400).json({ error: 'Email already exists' });
+            }
+            throw userError;
+        }
 
         // Create patient record
-        const patientResult = await db.run(
-            `INSERT INTO patients (user_id, name, age, gender, phone, email, address, diagnosis, treatment, medication, notes) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [userResult.id, name, age, gender, phone, email, address, diagnosis, treatment, medication, notes]
-        );
+        const { data: newPatient, error: patientError } = await supabase
+            .from('patients')
+            .insert({ user_id: newUser.id, name, age, gender, phone, email, address, diagnosis, treatment, medication, notes })
+            .select()
+            .single();
 
-        const newPatient = await db.get('SELECT * FROM patients WHERE id = ?', [patientResult.id]);
+        if (patientError) throw patientError;
 
         res.status(201).json({
             patient: newPatient,
@@ -82,11 +99,7 @@ router.post('/', authenticateToken, async (req, res) => {
         });
     } catch (error) {
         console.error('Error adding patient:', error);
-        if (error.message.includes('UNIQUE constraint failed')) {
-            res.status(400).json({ error: 'Email already exists' });
-        } else {
-            res.status(500).json({ error: 'Failed to add patient' });
-        }
+        res.status(500).json({ error: 'Failed to add patient' });
     }
 });
 
@@ -99,16 +112,14 @@ router.put('/:id', authenticateToken, async (req, res) => {
 
         const { name, age, gender, phone, email, address, diagnosis, treatment, medication, notes } = req.body;
 
-        await db.run(
-            `UPDATE patients SET name = ?, age = ?, gender = ?, phone = ?, email = ?, 
-             address = ?, diagnosis = ?, treatment = ?, medication = ?, notes = ?, last_visit = CURRENT_DATE
-             WHERE id = ?`,
-            [name, age, gender, phone, email, address, diagnosis, treatment, medication, notes, req.params.id]
-        );
+        const { data: updatedPatient, error } = await supabase
+            .from('patients')
+            .update({ name, age, gender, phone, email, address, diagnosis, treatment, medication, notes, last_visit: new Date().toISOString().split('T')[0] })
+            .eq('id', req.params.id)
+            .select()
+            .single();
 
-        const updatedPatient = await db.get('SELECT * FROM patients WHERE id = ?', [req.params.id]);
-        
-        if (!updatedPatient) {
+        if (error || !updatedPatient) {
             return res.status(404).json({ error: 'Patient not found' });
         }
 
@@ -119,22 +130,30 @@ router.put('/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Delete patient (doctor only)
+// Delete patient (doctor only) — cascades to appointments and fees via FK
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'doctor') {
             return res.status(403).json({ error: 'Access denied - Doctors only' });
         }
 
-        const patient = await db.get('SELECT user_id FROM patients WHERE id = ?', [req.params.id]);
-        
-        if (!patient) {
+        // Get user_id so we can delete the user (which cascades to patient)
+        const { data: patient, error: fetchError } = await supabase
+            .from('patients')
+            .select('user_id')
+            .eq('id', req.params.id)
+            .single();
+
+        if (fetchError || !patient) {
             return res.status(404).json({ error: 'Patient not found' });
         }
 
-        // Delete user (will cascade delete patient)
-        await db.run('DELETE FROM users WHERE id = ?', [patient.user_id]);
+        const { error } = await supabase
+            .from('users')
+            .delete()
+            .eq('id', patient.user_id);
 
+        if (error) throw error;
         res.json({ message: 'Patient deleted successfully' });
     } catch (error) {
         console.error('Error deleting patient:', error);
