@@ -27,6 +27,7 @@ const PORT = process.env.PORT || 3000;
 // ── CORS — allow GitHub Pages frontend + local dev ────────────────────────────
 const allowedOrigins = [
     'https://adityafeb22.github.io',
+    'https://hospital-management-system-production-4799.up.railway.app',
     'http://localhost:3000',
     'http://localhost:5500',
     'http://127.0.0.1:5500'
