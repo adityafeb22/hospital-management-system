@@ -553,19 +553,160 @@
             color: #666;
         }
         
+        /* ── Diagnostics ─────────────────────────────────────────────────── */
+        .diag-patient-selector {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .diag-patient-selector select {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .diag-file-list {
+            display: grid;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .diag-file-row {
+            background: white;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 14px 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .diag-file-icon {
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .diag-file-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .diag-file-label {
+            font-weight: 700;
+            color: #1f2937;
+            font-size: 15px;
+            margin-bottom: 2px;
+        }
+
+        .diag-file-name {
+            font-size: 12px;
+            color: #6b7280;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .diag-file-meta {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 2px;
+        }
+
+        .diag-file-notes {
+            font-size: 12px;
+            color: #4b5563;
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        .diag-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn-icon {
+            width: auto;
+            padding: 7px 14px;
+            font-size: 13px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .btn-download {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 7px 14px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .btn-download:hover { opacity: 0.9; }
+
+        .btn-delete-sm {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1.5px solid #fca5a5;
+            cursor: pointer;
+            border-radius: 6px;
+            padding: 7px 14px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .btn-delete-sm:hover { background: #fee2e2; }
+
+        .diag-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+            font-size: 14px;
+        }
+
+        .upload-drop-area {
+            border: 2px dashed #c7d2fe;
+            border-radius: 10px;
+            padding: 24px;
+            text-align: center;
+            background: #f5f7ff;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .upload-drop-area:hover { border-color: #667eea; }
+
+        .upload-drop-area p {
+            color: #6b7280;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+
         @media (max-width: 768px) {
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .nav-tabs {
                 flex-direction: column;
             }
-            
+
             .dashboard-header {
                 flex-direction: column;
                 gap: 15px;
                 align-items: flex-start;
+            }
+
+            .diag-file-row {
+                flex-wrap: wrap;
             }
         }
     </style>
@@ -718,7 +859,7 @@
             async addFee(token, data) {
                 const res = await fetch(`${API_URL}/fees`, {
                     method: 'POST',
-                    headers: { 
+                    headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
@@ -726,7 +867,244 @@
                 });
                 if (!res.ok) throw new Error('Failed to add fee');
                 return res.json();
+            },
+
+            async getDiagnostics(token, patientId) {
+                const res = await fetch(`${API_URL}/diagnostics/${patientId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to fetch diagnostics');
+                return res.json();
+            },
+
+            async uploadDiagnostic(token, patientId, formData) {
+                // formData is a FormData object (multipart)
+                const res = await fetch(`${API_URL}/diagnostics/${patientId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const body = await safeJson(res);
+                if (!res.ok) throw new Error(body?.error || 'Failed to upload diagnostic');
+                return body;
+            },
+
+            async downloadDiagnostic(token, patientId, id) {
+                const res = await fetch(`${API_URL}/diagnostics/${patientId}/${id}/download`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to get download link');
+                return res.json();
+            },
+
+            async deleteDiagnostic(token, patientId, id) {
+                const res = await fetch(`${API_URL}/diagnostics/${patientId}/${id}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Failed to delete diagnostic');
+                return res.json();
             }
+        };
+
+        // ── DiagnosticsTab component (doctor view) ─────────────────────────────
+        const DiagnosticsTab = ({ token, patients, diagnostics, diagPatientId, loadDiagnostics, setDiagnostics, setError, setSuccess, uploading, setUploading }) => {
+            const [showUpload, setShowUpload] = React.useState(false);
+            const [uploadLabel, setUploadLabel] = React.useState('');
+            const [uploadNotes, setUploadNotes] = React.useState('');
+            const [uploadFile, setUploadFile] = React.useState(null);
+            const [selectedPid, setSelectedPid] = React.useState(diagPatientId || '');
+            const fileRef = React.useRef(null);
+
+            const formatSize = (bytes) => {
+                if (!bytes) return '';
+                if (bytes < 1024) return `${bytes} B`;
+                if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)} KB`;
+                return `${(bytes/1024/1024).toFixed(1)} MB`;
+            };
+
+            const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+
+            const fileIcon = (mime) => {
+                if (!mime) return '📄';
+                if (mime === 'application/pdf') return '📋';
+                if (mime.startsWith('image/')) return '🖼️';
+                return '📄';
+            };
+
+            const handlePatientChange = async (pid) => {
+                setSelectedPid(pid);
+                setDiagnostics([]);
+                if (pid) await loadDiagnostics(pid);
+            };
+
+            const handleUpload = async (e) => {
+                e.preventDefault();
+                if (!selectedPid) { setError('Select a patient first'); return; }
+                if (!uploadFile) { setError('Select a file to upload'); return; }
+                if (!uploadLabel.trim()) { setError('Label is required'); return; }
+                setUploading(true);
+                setError('');
+                try {
+                    const fd = new FormData();
+                    fd.append('file', uploadFile);
+                    fd.append('label', uploadLabel.trim());
+                    if (uploadNotes.trim()) fd.append('notes', uploadNotes.trim());
+                    const record = await api.uploadDiagnostic(token, selectedPid, fd);
+                    setDiagnostics(prev => [record, ...prev]);
+                    setSuccess(`✅ "${record.label}" uploaded successfully`);
+                    setShowUpload(false);
+                    setUploadLabel(''); setUploadNotes(''); setUploadFile(null);
+                    if (fileRef.current) fileRef.current.value = '';
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
+            const handleDownload = async (patientId, diagId, fileName) => {
+                try {
+                    const { url } = await api.downloadDiagnostic(token, patientId, diagId);
+                    window.open(url, '_blank');
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            const handleDelete = async (patientId, diagId, label) => {
+                if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
+                try {
+                    await api.deleteDiagnostic(token, patientId, diagId);
+                    setDiagnostics(prev => prev.filter(d => d.id !== diagId));
+                    setSuccess(`Deleted "${label}"`);
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            return (
+                <div>
+                    <div className="diag-patient-selector">
+                        <select
+                            value={selectedPid}
+                            onChange={e => handlePatientChange(e.target.value)}
+                            style={{flex:1, minWidth:'200px', padding:'10px 12px', border:'2px solid #e0e0e0', borderRadius:'8px', fontSize:'14px'}}
+                        >
+                            <option value="">— Select a patient —</option>
+                            {patients.map(p => (
+                                <option key={p.id} value={p.id}>{p.name} ({p.phone})</option>
+                            ))}
+                        </select>
+                        {selectedPid && (
+                            <button
+                                className="btn btn-small"
+                                onClick={() => { setShowUpload(true); setError(''); setSuccess(''); }}
+                            >
+                                ⬆ Upload Report
+                            </button>
+                        )}
+                    </div>
+
+                    {showUpload && (
+                        <div className="card" style={{marginBottom:'20px',border:'2px solid #c7d2fe',background:'#f5f7ff'}}>
+                            <h3 style={{marginBottom:'16px',color:'#4f46e5'}}>Upload Diagnostic Report</h3>
+                            <form onSubmit={handleUpload}>
+                                <div className="form-group">
+                                    <label>Label / Test Name*</label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. Blood Test, Chest X-Ray, MRI Scan"
+                                        value={uploadLabel}
+                                        onChange={e => setUploadLabel(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>Notes (optional)</label>
+                                    <textarea
+                                        placeholder="Any additional context for this report..."
+                                        value={uploadNotes}
+                                        onChange={e => setUploadNotes(e.target.value)}
+                                        style={{minHeight:'70px'}}
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label>File* <span style={{fontWeight:400,color:'#667eea',fontSize:'12px'}}>(PDF, JPG or PNG · max 10 MB)</span></label>
+                                    <div className="upload-drop-area" onClick={() => fileRef.current?.click()}>
+                                        {uploadFile ? (
+                                            <div>
+                                                <div style={{fontSize:'32px'}}>
+                                                    {uploadFile.type === 'application/pdf' ? '📋' : '🖼️'}
+                                                </div>
+                                                <p style={{color:'#374151',fontWeight:600}}>{uploadFile.name}</p>
+                                                <p>{(uploadFile.size/1024/1024).toFixed(2)} MB — click to change</p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <div style={{fontSize:'32px'}}>📂</div>
+                                                <p>Click to select a file</p>
+                                                <p>PDF, JPG or PNG · max 10 MB</p>
+                                            </div>
+                                        )}
+                                        <input
+                                            ref={fileRef}
+                                            type="file"
+                                            accept=".pdf,.jpg,.jpeg,.png"
+                                            style={{display:'none'}}
+                                            onChange={e => setUploadFile(e.target.files[0] || null)}
+                                        />
+                                    </div>
+                                </div>
+                                <div style={{display:'flex',gap:'10px'}}>
+                                    <button type="submit" className="btn btn-small" disabled={uploading}>
+                                        {uploading ? 'Uploading...' : 'Upload'}
+                                    </button>
+                                    <button type="button" className="btn btn-small btn-secondary" onClick={() => { setShowUpload(false); setUploadLabel(''); setUploadNotes(''); setUploadFile(null); }}>
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    )}
+
+                    {!selectedPid ? (
+                        <div className="diag-empty">
+                            <div style={{fontSize:'48px',marginBottom:'12px'}}>🔬</div>
+                            <p>Select a patient above to view or upload their diagnostic reports.</p>
+                        </div>
+                    ) : diagnostics.length === 0 ? (
+                        <div className="diag-empty">
+                            <div style={{fontSize:'48px',marginBottom:'12px'}}>📂</div>
+                            <p>No diagnostic reports uploaded for this patient yet.</p>
+                        </div>
+                    ) : (
+                        <div className="diag-file-list">
+                            {diagnostics.map(d => (
+                                <div key={d.id} className="diag-file-row">
+                                    <div className="diag-file-icon">{fileIcon(d.mime_type)}</div>
+                                    <div className="diag-file-info">
+                                        <div className="diag-file-label">{d.label}</div>
+                                        <div className="diag-file-name">{d.file_name}</div>
+                                        <div className="diag-file-meta">
+                                            {formatDate(d.created_at)}{d.file_size ? ` · ${formatSize(d.file_size)}` : ''}
+                                        </div>
+                                        {d.notes && <div className="diag-file-notes">📝 {d.notes}</div>}
+                                    </div>
+                                    <div className="diag-actions">
+                                        <button className="btn-download" onClick={() => handleDownload(selectedPid, d.id, d.file_name)}>
+                                            ⬇ Download
+                                        </button>
+                                        <button className="btn-delete-sm" onClick={() => handleDelete(selectedPid, d.id, d.label)}>
+                                            🗑 Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
         };
 
         const App = () => {
@@ -738,6 +1116,9 @@
             const [pendingPatients, setPendingPatients] = useState([]);
             const [appointments, setAppointments] = useState([]);
             const [fees, setFees] = useState([]);
+            const [diagnostics, setDiagnostics] = useState([]); // doctor: all; patient: own
+            const [diagPatientId, setDiagPatientId] = useState(null); // currently viewed patient in diag tab
+            const [uploading, setUploading] = useState(false);
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
             const [success, setSuccess] = useState('');
@@ -766,12 +1147,14 @@
                         setFees(feesData);
                         setPendingPatients(pendingData);
                     } else {
-                        const [appointmentsData, feesData] = await Promise.all([
+                        const [appointmentsData, feesData, diagData] = await Promise.all([
                             api.getAppointments(t),
-                            api.getFees(t)
+                            api.getFees(t),
+                            api.getDiagnostics(t, u.patientId)
                         ]);
                         setAppointments(appointmentsData);
                         setFees(feesData);
+                        setDiagnostics(diagData);
 
                         const patientData = await fetch(`${API_URL}/patients/${u.patientId}`, {
                             headers: { 'Authorization': `Bearer ${t}` }
@@ -782,6 +1165,17 @@
                     setError(err.message);
                 } finally {
                     setLoading(false);
+                }
+            };
+
+            // Load diagnostics for a specific patient (doctor view)
+            const loadDiagnostics = async (patientId) => {
+                try {
+                    const data = await api.getDiagnostics(token, patientId);
+                    setDiagnostics(data);
+                    setDiagPatientId(patientId);
+                } catch (err) {
+                    setError(err.message);
                 }
             };
 
@@ -1191,6 +1585,41 @@
                             </div>
 
                             <div className="card">
+                                <h3>🔬 My Diagnostic Reports</h3>
+                                {diagnostics.length === 0 ? (
+                                    <p style={{color:'#666',marginTop:'10px'}}>No diagnostic reports on file.</p>
+                                ) : (
+                                    <div className="diag-file-list" style={{marginTop:'12px'}}>
+                                        {diagnostics.map(d => {
+                                            const formatDate = (dt) => dt ? new Date(dt).toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'}) : '—';
+                                            const fileIcon = (mime) => mime === 'application/pdf' ? '📋' : mime?.startsWith('image/') ? '🖼️' : '📄';
+                                            return (
+                                                <div key={d.id} className="diag-file-row">
+                                                    <div className="diag-file-icon">{fileIcon(d.mime_type)}</div>
+                                                    <div className="diag-file-info">
+                                                        <div className="diag-file-label">{d.label}</div>
+                                                        <div className="diag-file-name">{d.file_name}</div>
+                                                        <div className="diag-file-meta">{formatDate(d.created_at)}</div>
+                                                        {d.notes && <div className="diag-file-notes">📝 {d.notes}</div>}
+                                                    </div>
+                                                    <div className="diag-actions">
+                                                        <button className="btn-download" onClick={async () => {
+                                                            try {
+                                                                const { url } = await api.downloadDiagnostic(token, user.patientId, d.id);
+                                                                window.open(url, '_blank');
+                                                            } catch (err) {
+                                                                setError(err.message);
+                                                            }
+                                                        }}>⬇ Download</button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="card">
                                 {(() => {
                                     const totalDue = fees.filter(f => f.payment_status === 'pending').reduce((s, f) => s + parseFloat(f.amount || 0), 0);
                                     const totalPaid = fees.filter(f => f.payment_status === 'paid').reduce((s, f) => s + parseFloat(f.amount || 0), 0);
@@ -1362,6 +1791,12 @@
                                 </button>
                             ))}
                             <button
+                                className={`nav-tab ${activeTab === 'diagnostics' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('diagnostics')}
+                            >
+                                🔬 Diagnostics
+                            </button>
+                            <button
                                 className={`nav-tab ${activeTab === 'pending' ? 'active' : ''}`}
                                 onClick={() => setActiveTab('pending')}
                                 style={{position:'relative'}}
@@ -1488,6 +1923,21 @@
                                     </div>
                                 )}
                             </>
+                        )}
+
+                        {activeTab === 'diagnostics' && (
+                            <DiagnosticsTab
+                                token={token}
+                                patients={patients}
+                                diagnostics={diagnostics}
+                                diagPatientId={diagPatientId}
+                                loadDiagnostics={loadDiagnostics}
+                                setDiagnostics={setDiagnostics}
+                                setError={setError}
+                                setSuccess={setSuccess}
+                                uploading={uploading}
+                                setUploading={setUploading}
+                            />
                         )}
 
                         {activeTab === 'fees' && (

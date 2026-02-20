@@ -17,6 +17,7 @@ const supabase = require('./database');
 const patientRoutes = require('./routes/patients');
 const appointmentRoutes = require('./routes/appointments');
 const feeRoutes = require('./routes/fees');
+const diagnosticsRoutes = require('./routes/diagnostics');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -195,6 +196,7 @@ app.get('/api/auth/verify', async (req, res) => {
 app.use('/api/patients', patientRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/fees', feeRoutes);
+app.use('/api/diagnostics', diagnosticsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
