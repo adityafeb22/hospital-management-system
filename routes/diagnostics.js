@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto'); // built-in Node.js — no ESM issues
 const supabase = require('../database');
 const { authenticateToken } = require('../middleware/auth');
 
@@ -82,7 +82,7 @@ router.post('/:patientId', authenticateToken, upload.single('file'), async (req,
         // Build a safe, unique storage path
         const ext = req.file.originalname.split('.').pop().toLowerCase();
         const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const filePath = `${patientId}/${uuidv4()}-${safeName}`;
+        const filePath = `${patientId}/${randomUUID()}-${safeName}`;
 
         // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
